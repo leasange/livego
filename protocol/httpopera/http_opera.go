@@ -10,7 +10,30 @@ import (
 	"log"
 	"github.com/gwuhaolin/livego/av"
 	"github.com/gwuhaolin/livego/protocol/rtmp"
+	"os/exec"
+	"os"
+	"path/filepath"
+	"strings"
+	"errors"
 )
+func getCurrentPath() (string, error) {
+	file, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		return "", err
+	}
+	path, err := filepath.Abs(file)
+	if err != nil {
+		return "", err
+	}
+	i := strings.LastIndex(path, "/")
+	if i < 0 {
+		i = strings.LastIndex(path, "\\")
+	}
+	if i < 0 {
+		return "", errors.New(`error: Can't find "/" or "\".`)
+	}
+	return string(path[0 : i+1]), nil
+}
 
 type Response struct {
 	w       http.ResponseWriter
@@ -58,10 +81,10 @@ func NewServer(h av.Handler, rtmpAddr string) *Server {
 }
 
 func (s *Server) Serve(l net.Listener) error {
+
 	mux := http.NewServeMux()
 
-	mux.Handle("/statics", http.FileServer(http.Dir("statics")))
-
+	mux.Handle("/web/",http.StripPrefix("/web",http.FileServer(http.Dir("./web/"))))
 	mux.HandleFunc("/control/push", func(w http.ResponseWriter, r *http.Request) {
 		s.handlePush(w, r)
 	})
