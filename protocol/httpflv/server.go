@@ -130,3 +130,36 @@ func (server *Server) handleConn(w http.ResponseWriter, r *http.Request) {
 	server.handler.HandleWriter(writer)
 	writer.Wait()
 }
+
+func (server *Server) StartPlay(app string,name string,url string,w http.ResponseWriter) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("http flv handleConn panic: ", r)
+		}
+	}()
+	// 判断视屏流是否发布,如果没有发布,直接返回404
+	path:=app+"/"+name
+	msgs := server.getStreams(w, nil)
+	if msgs == nil || len(msgs.Publishers) == 0 {
+		http.Error(w, "invalid path", http.StatusNotFound)
+		return
+	} else {
+		include := false
+		for _, item := range msgs.Publishers {
+			if item.Key == path {
+				include = true
+				break
+			}
+		}
+		if include == false {
+			http.Error(w, "invalid path", http.StatusNotFound)
+			return
+		}
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writer := NewFLVWriter(app, name, url, w)
+
+	server.handler.HandleWriter(writer)
+	writer.Wait()
+}

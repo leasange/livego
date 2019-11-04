@@ -108,7 +108,7 @@ func (server *Server) handle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, ErrNoPublisher.Error(), http.StatusForbidden)
 			return
 		}
-		body, err := tsCache.GenM3U8PlayList()
+		body, err := tsCache.GenM3U8PlayList("")
 		if err != nil {
 			log.Println("GenM3U8PlayList error: ", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -143,7 +143,8 @@ func (server *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 func (server *Server) parseM3u8(pathstr string) (key string, err error) {
 	pathstr = strings.TrimLeft(pathstr, "/")
-	key = strings.TrimRight(pathstr, path.Ext(pathstr))
+	ext:=path.Ext(pathstr)
+	key = strings.TrimSuffix(pathstr,ext)
 	return
 }
 
@@ -157,4 +158,52 @@ func (server *Server) parseTs(pathstr string) (key string, err error) {
 	key = paths[0] + "/" + paths[1]
 
 	return
+}
+
+func (server*Server) StartPlay(app string,name string,tsname string,suffix string,url string,w http.ResponseWriter) {
+	url = strings.TrimPrefix(url, "/play")
+	switch suffix {
+	case ".m3u8":
+		key, _ := server.parseM3u8(url)
+		conn := server.getConn(key)
+		if conn == nil {
+			http.Error(w, ErrNoPublisher.Error(), http.StatusForbidden)
+			return
+		}
+		tsCache := conn.GetCacheInc()
+		if tsCache == nil {
+			http.Error(w, ErrNoPublisher.Error(), http.StatusForbidden)
+			return
+		}
+		body, err := tsCache.GenM3U8PlayList("/play")
+		if err != nil {
+			log.Println("GenM3U8PlayList error: ", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Type", "application/x-mpegURL")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.Write(body)
+	case ".ts":
+		key, _ := server.parseTs(url)
+		conn := server.getConn(key)
+		if conn == nil {
+			http.Error(w, ErrNoPublisher.Error(), http.StatusForbidden)
+			return
+		}
+		tsCache := conn.GetCacheInc()
+		item, err := tsCache.GetItem(url)
+		if err != nil {
+			log.Println("GetItem error: ", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "video/mp2ts")
+		w.Header().Set("Content-Length", strconv.Itoa(len(item.Data)))
+		w.Write(item.Data)
+	}
 }

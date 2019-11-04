@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"errors"
+	"github.com/gwuhaolin/livego/protocol/httpflv"
+	"github.com/gwuhaolin/livego/protocol/hls"
 )
 func getCurrentPath() (string, error) {
 	file, err := exec.LookPath(os.Args[0])
@@ -70,19 +72,34 @@ type Server struct {
 	handler  av.Handler
 	session  map[string]*rtmprelay.RtmpRelay
 	rtmpAddr string
+
+	flvHandler interface{}
+	hlsHandler interface{}
 }
 
-func NewServer(h av.Handler, rtmpAddr string) *Server {
+func NewServer(h av.Handler, rtmpAddr string,flv interface{},hls interface{}) *Server {
 	return &Server{
 		handler:  h,
 		session:  make(map[string]*rtmprelay.RtmpRelay),
 		rtmpAddr: rtmpAddr,
+		flvHandler:flv,
+		hlsHandler:hls,
 	}
 }
-
+var crossdomainxml = []byte(`<?xml version="1.0" ?>
+<cross-domain-policy>
+	<allow-access-from domain="*" />
+	<allow-http-request-headers-from domain="*" headers="*"/>
+</cross-domain-policy>`)
 func (s *Server) Serve(l net.Listener) error {
 
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/crossdomain.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write(crossdomainxml)
+		return
+	})
 
 	mux.Handle("/web/",http.StripPrefix("/web",http.FileServer(http.Dir("./web/"))))
 	mux.HandleFunc("/control/push", func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +111,10 @@ func (s *Server) Serve(l net.Listener) error {
 	mux.HandleFunc("/stat/livestat", func(w http.ResponseWriter, r *http.Request) {
 		s.GetLiveStatics(w, r)
 	})
+	mux.HandleFunc("/play/", func(w http.ResponseWriter, r *http.Request) {
+		s.StartPlay(w, r)
+	})
+
 	http.Serve(l, mux)
 	return nil
 }
@@ -155,6 +176,74 @@ func (server *Server) GetLiveStatics(w http.ResponseWriter, req *http.Request) {
 	resp, _ := json.Marshal(msgs)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(resp)
+}
+
+//http://127.0.0.1:8090/play/live/movie(.flv/.m3u8)
+func (server*Server)  StartPlay(w http.ResponseWriter, req *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("http-opr flv handleConn panic: ", r)
+		}
+	}()
+	url := req.URL.String()
+	u := strings.TrimPrefix(req.URL.Path, "/play/")
+	an := strings.Split(u, "/")
+	log.Println("url:", url, "paths:", an)
+	if len(an) < 2 || len(an[0]) == 0 || len(an[1]) == 0 {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	app, name := an[0], an[1]
+	tsname := ""
+	ts := false
+	if len(an) == 3 && strings.HasSuffix(an[2], ".ts") {
+		ts = true
+	}
+	var suffix = ""
+	if !ts {
+		pos := strings.LastIndex(name, ".")
+		if pos < 0 {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
+		suffix = name[pos:]
+		name = name[0:pos]
+		if len(name) == 0 {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
+	} else {
+		suffix = ".ts"
+		tsname = strings.TrimSuffix(an[2], ".ts")
+	}
+
+	rtmpStream := server.handler.(*rtmp.RtmpStream)
+	if rtmpStream == nil {
+		http.Error(w, "null rtmp stream", http.StatusExpectationFailed)
+		return
+	}
+
+	switch suffix {
+	case ".flv":
+		flvs := server.flvHandler.(*httpflv.Server)
+		if (flvs == nil) {
+			http.Error(w, "null flv server", http.StatusExpectationFailed)
+			return
+		}
+		flvs.StartPlay(app, name, req.URL.String(), w)
+		break
+	case ".m3u8", ".ts":
+		hlss := server.hlsHandler.(*hls.Server)
+		if (hlss == nil) {
+			http.Error(w, "null hls server", http.StatusExpectationFailed)
+			return
+		}
+		hlss.StartPlay(app, name, tsname, suffix, req.URL.String(), w)
+		break
+	default:
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
 }
 
 //http://127.0.0.1:8090/control/push?&oper=start&app=live&name=123456&url=rtmp://192.168.16.136/live/123456

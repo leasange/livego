@@ -38,7 +38,7 @@ func (tcCacheItem *TSCacheItem) ID() string {
 }
 
 // TODO: found data race, fix it
-func (tcCacheItem *TSCacheItem) GenM3U8PlayList() ([]byte, error) {
+func (tcCacheItem *TSCacheItem) GenM3U8PlayList(urlPrefix string) ([]byte, error) {
 	var seq int
 	var getSeq bool
 	var maxDuration int
@@ -54,7 +54,7 @@ func (tcCacheItem *TSCacheItem) GenM3U8PlayList() ([]byte, error) {
 				getSeq = true
 				seq = v.SeqNum
 			}
-			fmt.Fprintf(m3u8body, "#EXTINF:%.3f,\n%s\n", float64(v.Duration)/float64(1000), v.Name)
+			fmt.Fprintf(m3u8body, "#EXTINF:%.3f,\n%s\n", float64(v.Duration)/float64(1000), urlPrefix+v.Name)
 		}
 	}
 	w := bytes.NewBuffer(nil)

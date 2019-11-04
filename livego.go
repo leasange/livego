@@ -70,7 +70,7 @@ func startRtmp(stream *rtmp.RtmpStream, hlsServer *hls.Server) {
 	rtmpServer.Serve(rtmpListen)
 }
 
-func startHTTPFlv(stream *rtmp.RtmpStream) {
+func startHTTPFlv(stream *rtmp.RtmpStream)*httpflv.Server {
 	flvListen, err := net.Listen("tcp", *httpFlvAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -86,15 +86,16 @@ func startHTTPFlv(stream *rtmp.RtmpStream) {
 		log.Println("HTTP-FLV listen On", *httpFlvAddr)
 		hdlServer.Serve(flvListen)
 	}()
+	return hdlServer
 }
 
-func startHTTPOpera(stream *rtmp.RtmpStream) {
+func startHTTPOpera(stream *rtmp.RtmpStream,flv interface{},hls interface{}) {
 	if *operaAddr != "" {
 		opListen, err := net.Listen("tcp", *operaAddr)
 		if err != nil {
 			log.Fatal(err)
 		}
-		opServer := httpopera.NewServer(stream, *rtmpAddr)
+		opServer := httpopera.NewServer(stream, *rtmpAddr,flv,hls)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -119,12 +120,10 @@ func main() {
 	if err != nil {
 		return
 	}
-
 	stream := rtmp.NewRtmpStream()
 	hlsServer := startHls()
-	startHTTPFlv(stream)
-	startHTTPOpera(stream)
-
+	flvServer:=startHTTPFlv(stream)
+	startHTTPOpera(stream,flvServer,hlsServer)
 	startRtmp(stream, hlsServer)
 	//startRtmp(stream, nil)
 }
