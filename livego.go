@@ -18,7 +18,7 @@ var (
 	httpFlvAddr    = flag.String("httpflv-addr", ":7001", "HTTP-FLV server listen address")
 	hlsAddr        = flag.String("hls-addr", ":7002", "HLS server listen address")
 	operaAddr      = flag.String("manage-addr", ":8090", "HTTP manage interface server listen address")
-	configfilename = flag.String("cfgfile", "livego.cfg", "live configure filename")
+	configfilename = flag.String("cfgfile", "livego_cfg.json", "live configure filename")
 )
 
 func init() {
